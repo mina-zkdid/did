@@ -1,24 +1,26 @@
-// DID Document
-type public_key = {
-  id: string;
-  type_: string;
-  controller: string;
-  public_key_hex: string;
-}
+// Import zkSNARKyjs
+import { Circuit } from 'snarkyjs';
 
-type service = {
-  id: string;
-  type_: string;
-  service_endpoint: string;
-}
+// Define Circuit for DID Document
+const didDocCircuit = Circuit.create('DID Document Circuit', async circuit => {
+  // Define Circuit Constraints
+  // ...
 
-type did_document = {
-  context: string[];
-  id: string;
-  public_keys: public_key[];
-  services: service[];
-}
+  // Define Public Inputs
+  const publicInputs = circuit.public({ did: circuit.bits(256), operation: circuit.bits(3) });
 
+  // Define Secret Inputs
+  const secretInputs = circuit.secret({ context: circuit.bits(256), publicKeys: circuit.bits(256), services: circuit.bits(256) });
+
+  // Perform Circuit Operations
+  const document = circuit.multi([publicInputs.did, secretInputs.context, secretInputs.publicKeys, secretInputs.services], (did, context, publicKeys, services) => {
+    // Perform DID Document Operations
+    // ...
+  });
+
+  // Define Circuit Outputs
+  circuit.output({ document });
+});
 
 // DID Registry Contract
 class DIDRegistry {
@@ -27,9 +29,17 @@ class DIDRegistry {
   private documents: Map<string, DIDDocument> = new Map<string, DIDDocument>();
 
   // Create DID
-  public create_did(did: string, context: string[], public_keys: PublicKey[], services: Service[]): void {
+  public async create_did(did: string, context: string[], public_keys: PublicKey[], services: Service[]): Promise<void> {
     if (this.documents.has(did)) {
       throw new Error("DID already exists");
+    }
+
+    // Generate Proof for DID Document Creation
+    const { proof, publicSignals } = await didDocCircuit.calculateWitness({ did, operation: 0 }, { context, publicKeys, services });
+    const isValid = await didDocCircuit.verify(proof, publicSignals);
+
+    if (!isValid) {
+      throw new Error("Invalid proof for DID Document creation");
     }
 
     const document: DIDDocument = {
@@ -43,56 +53,35 @@ class DIDRegistry {
   }
 
   // Add Public Key
-  public add_public_key(did: string, public_key: PublicKey): void {
+  public async add_public_key(did: string, public_key: PublicKey): Promise<void> {
     if (!this.documents.has(did)) {
       throw new Error("DID does not exist");
     }
 
+    // Generate Proof for Adding Public Key
     const existing_keys: PublicKey[] = this.documents.get(did)?.publicKeys ?? [];
     if (existing_keys.some(k => k.id === public_key.id)) {
       throw new Error("Public key already exists");
     }
 
     const updated_keys: PublicKey[] = existing_keys.concat(public_key);
+    const { proof, publicSignals } = await didDocCircuit.calculateWitness({ did, operation: 1 }, { publicKeys: updated_keys });
+    const isValid = await didDocCircuit.verify(proof, publicSignals);
+
+    if (!isValid) {
+      throw new Error("Invalid proof for adding public key");
+    }
+
     const updated_document: DIDDocument = { ...this.documents.get(did)!, publicKeys: updated_keys };
     this.documents.set(did, updated_document);
   }
 
   // Add Service
-  public add_service(did: string, service: Service): void {
+  public async add_service(did: string, service: Service): Promise<void> {
     if (!this.documents.has(did)) {
       throw new Error("DID does not exist");
     }
 
+    // Generate Proof for Adding Service
     const existing_services: Service[] = this.documents.get(did)?.service ?? [];
-    if (existing_services.some(s => s.id === service.id)) {
-      throw new Error("Service already exists");
-    }
-
-    const updated_services: Service[] = existing_services.concat(service);
-    const updated_document: DIDDocument = { ...this.documents.get(did)!, service: updated_services };
-    this.documents.set(did, updated_document);
-  }
-
-  // Get DID Document
-  public get_did_document(did: string): DIDDocument {
-    if (!this.documents.has(did)) {
-      throw new Error("DID does not exist");
-    }
-    return this.documents.get(did)!;
-  }
-
-  // Register Name
-  public register_name(name: string, did: string): void {
-    if (this.documents.has(name)) {
-      throw new Error("Name already registered");
-    }
-    if (!this.documents.has(did)) {
-      throw new Error("DID does not exist");
-    }
-
-    const document: DIDDocument = this.documents.get(did)!;
-    this.documents.set(name, document);
-  }
-}
-
+    if (existing_services.some(s => s.id
